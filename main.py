@@ -9,7 +9,7 @@ import requests
 import math
 from urllib.parse import urlparse
 from pyrogram import Client, filters
-
+import time
 
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("hash")
@@ -62,7 +62,6 @@ async def download_file(url, chat_id):
     except Exception as e:
         await app.send_message(chat_id, f"An unexpected error occurred: {e}")
 # Upload a file to Telegram in chunks
-import time
 
 
 class TimeFormatter:
@@ -85,17 +84,14 @@ async def upload_file(chat_id, file_path):
             sent_msg = await app.send_document(chat_id=chat_id, document=file_path)
             if sent_msg and sent_msg.document:
                 file_id = sent_msg.document.file_id
+                progress_message = await app.send_message(chat_id, "Uploading: 0%")
                 for i in range(num_chunks - 1):
                     chunk = file.read(chunk_size)
                     await app.send_chat_action(chat_id, "upload_document")
                     await app.edit_message_media(chat_id=chat_id, message_id=sent_msg.message_id, media=chunk, file_id=file_id)
                     # Calculate progress
                     current_size = (i + 1) * chunk_size
-                    progress_message = "[{0}{1}] {2:.2f}%\n".format(
-                        ''.join(["█" for i in range(math.floor(current_size / file_size * 20))]),
-                        ''.join(["" for i in range(20 - math.floor(current_size / file_size * 20))]),
-                        current_size / file_size * 100
-                    )
+                    percentage = (current_size / file_size) * 100
                     # Calculate speed and remaining time
                     now = time.time()
                     elapsed_time = now - start_time
@@ -103,11 +99,12 @@ async def upload_file(chat_id, file_path):
                     remaining_time = (file_size - current_size) / speed if speed > 0 else 0
                     remaining_time_str = TimeFormatter(remaining_time * 1000).format()
 
-                    progress_message += f"Progress: {current_size}/{file_size} bytes\n"
-                    progress_message += f"Speed: {speed:.2f} bytes/s\n"
-                    progress_message += f"Remaining time: {remaining_time_str}"
+                    progress_text = f"Uploading: {percentage:.2f}%\n"
+                    progress_text += f"Progress: {current_size}/{file_size} bytes\n"
+                    progress_text += f"Speed: {speed:.2f} bytes/s\n"
+                    progress_text += f"Remaining time: {remaining_time_str}"
 
-                    await app.send_message(chat_id, progress_message)
+                    await progress_message.edit_text(progress_text)
                     print(f"Uploaded chunk {i + 1}/{num_chunks}")
             else:
                 print("Failed to retrieve document information.")
@@ -116,7 +113,6 @@ async def upload_file(chat_id, file_path):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         raise
-
 
 # Command handler for /download
 @app.on_message(filters.command("download") & filters.private)

@@ -3,3 +3,4 @@ pyrogram
 urllib3
 yt-dlp
 bottle
+TgCrypto

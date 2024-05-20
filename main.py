@@ -1,13 +1,15 @@
 import os
 import logging
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 import shutil
 import requests
 import math
-from urllib.parse import urlparse
 from pyrogram import Client, filters
+from urllib.parse import urlparse
+import yt_dlp
+
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 API_ID = os.environ.get("API_ID")
@@ -113,18 +115,31 @@ async def download_handler(client, message):
 
             filename_with_extension = None
             method = None
+
             if 'Content-Disposition' in response.headers:
                 content_disposition = response.headers['Content-Disposition']
                 if 'filename=' in content_disposition:
                     filename = content_disposition.split('filename=')[-1].strip('"')
-                    filename_with_extension = filename
-                    method = "extracted"
+                    if '.' in filename:
+                        filename_with_extension = filename
+                        method = "extracted"
 
             if filename_with_extension is None:
+                # Try to guess filename from URL
                 parsed_url = urlparse(url)
                 filename = parsed_url.path.split("/")[-1]
-                filename_with_extension = filename
-                method = "fallback"
+                if '.' in filename:
+                    filename_with_extension = filename
+                    method = "fallback"
+
+            if filename_with_extension is None:
+                # Use yt_dlp as last option to get metadata and determine file extension
+                with yt_dlp.YoutubeDL({}) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    if 'ext' in info:
+                        extension = info['ext']
+                        filename_with_extension = f"file.{extension}"
+                        method = "yt_dlp"
 
             logger.info(f"Filename: {filename_with_extension} (Method: {method})")
 

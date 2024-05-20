@@ -6,6 +6,7 @@ import math
 from pyrogram import Client, filters
 from urllib.parse import urlparse
 import yt_dlp
+from server import keep_alive
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -163,5 +164,5 @@ async def download_handler(client, message):
     else:
         await message.reply_text("Please provide a URL to download the file from.")
 
-
+keep_alive()
 app.run()

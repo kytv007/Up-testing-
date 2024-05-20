@@ -4,20 +4,19 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-
 import requests
 import math
 from urllib.parse import urlparse
 from pyrogram import Client, filters
-import time
+import tempfile
 
 API_ID = os.environ.get("API_ID")
-API_HASH = os.environ.get("hash")
-BOT_TOKEN = os.environ.get("Token")
+API_HASH = os.environ.get("API_HASH")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+
 
 # Create a Pyrogram client instance
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, session_string=None)
-
 
 
 # Create the "downloads" folder if it doesn't exist
@@ -25,7 +24,6 @@ downloads_dir = "downloads"
 if not os.path.exists(downloads_dir):
     os.makedirs(downloads_dir)
 
-# Download a file from a URL in chunks
 # Download a file from a URL in chunks
 async def download_file(url, chat_id):
     try:
@@ -61,55 +59,39 @@ async def download_file(url, chat_id):
         await app.send_message(chat_id, f"Error downloading file: {e}")
     except Exception as e:
         await app.send_message(chat_id, f"An unexpected error occurred: {e}")
-# Upload a file to Telegram in chunks
 
 
-class TimeFormatter:
-    def __init__(self, milliseconds):
-        self.milliseconds = milliseconds
-
-    def format(self):
-        seconds, milliseconds = divmod(self.milliseconds, 1000)
-        minutes, seconds = divmod(seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-        return "{:02}:{:02}:{:02}".format(hours, minutes, seconds)
+# Upload the file
 
 async def upload_file(chat_id, file_path):
     try:
-        chunk_size = 1024 * 1024 * 45
+        chunk_size = 1024 * 1024 * 1
         file_size = os.path.getsize(file_path)
         num_chunks = math.ceil(file_size / chunk_size)
-        start_time = time.time()
-        with open(file_path, "rb") as file:  # Open the file in binary mode
-            sent_msg = await app.send_document(chat_id=chat_id, document=file_path)
-            if sent_msg and sent_msg.document:
-                file_id = sent_msg.document.file_id
-                progress_message = await app.send_message(chat_id, "Uploading: 0%")
-                for i in range(num_chunks - 1):
-                    chunk = file.read(chunk_size)
-                    await app.send_chat_action(chat_id, "upload_document")
-                    await app.edit_message_media(chat_id=chat_id, message_id=sent_msg.message_id, media=chunk, file_id=file_id)
-                    # Calculate progress
-                    current_size = (i + 1) * chunk_size
-                    percentage = (current_size / file_size) * 100
-                    # Calculate speed and remaining time
-                    now = time.time()
-                    elapsed_time = now - start_time
-                    speed = current_size / elapsed_time if elapsed_time > 0 else 0
-                    remaining_time = (file_size - current_size) / speed if speed > 0 else 0
-                    remaining_time_str = TimeFormatter(remaining_time * 1000).format()
+        progress_message = await app.send_message(chat_id, "Uploading: 0%")
 
-                    progress_text = f"Uploading: {percentage:.2f}%\n"
-                    progress_text += f"Progress: {current_size}/{file_size} bytes\n"
-                    progress_text += f"Speed: {speed:.2f} bytes/s\n"
-                    progress_text += f"Remaining time: {remaining_time_str}"
+        combined_chunks = bytearray()
+        with open(file_path, "rb") as file:
+            for i in range(num_chunks):
+                chunk = file.read(chunk_size)
+                combined_chunks.extend(chunk)
 
-                    await progress_message.edit_text(progress_text)
-                    print(f"Uploaded chunk {i + 1}/{num_chunks}")
-            else:
-                print("Failed to retrieve document information.")
-        print("File uploaded to Telegram!")
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as temp_file:
+            temp_file.write(combined_chunks)
+            temp_file_path = temp_file.name
+
+        async def progress_callback(current, total):
+            percentage = (current / total) * 100
+            await progress_message.edit_text(f"Uploading: {percentage:.2f}%")
+
+        sent_msg = await app.send_document(chat_id=chat_id, document=temp_file_path, progress=progress_callback)
+        if sent_msg and sent_msg.document:
+            print("File uploaded to Telegram!")
+        else:
+            print("Failed to retrieve document information.")
+
         os.remove(file_path)
+        os.remove(temp_file_path)
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         raise
